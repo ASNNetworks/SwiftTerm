@@ -25,8 +25,16 @@ public protocol LocalProcessDelegate: AnyObject {
     /// This method is invoked when data has been received from the local process that should be send to the terminal for processing.
     func dataReceived (slice: ArraySlice<UInt8>)
 
+    /// The PTY reader has delivered every output chunk and reached EOF or a read error.
+    /// Delivered on the process's dispatch queue, independently of `processTerminated`.
+    func ptyOutputDrained (_ source: LocalProcess)
+
     /// This method should return the window size to report to the local process.
     func getWindowSize () -> winsize
+}
+
+public extension LocalProcessDelegate {
+    func ptyOutputDrained (_ source: LocalProcess) {}
 }
 
 /**
@@ -485,8 +493,11 @@ extension LocalProcess: TerminalIOPipelineDelegate {
         // number through `childfd` in the meantime.
         childfd = -1
         dispatchQueue.async { [weak self] in
-            guard let self, self.running else { return }
-            self.childStopped(cancelProcessMonitor: false)
+            guard let self, self.pipeline === pipeline else { return }
+            if self.running {
+                self.childStopped(cancelProcessMonitor: false)
+            }
+            self.delegate?.ptyOutputDrained(self)
         }
     }
 }
